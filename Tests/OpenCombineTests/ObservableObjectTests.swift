@@ -94,6 +94,27 @@ final class ObservableObjectTests: XCTestCase {
                                       .value(()),
                                       .value(())])
     }
+    func testDoesntUseReflection() {
+        let testObject = CustomReflectableTestObject()
+        var downstreamSubscription1: Subscription?
+        let tracking1 = TrackingSubscriberBase<Void, Never>(
+            receiveSubscription: { downstreamSubscription1 = $0 }
+        )
+
+        testObject.objectWillChange.subscribe(tracking1)
+        tracking1.assertHistoryEqual([.subscription("ObservableObjectPublisher")])
+        downstreamSubscription1?.request(.max(2))
+        tracking1.assertHistoryEqual([.subscription("ObservableObjectPublisher")])
+        testObject.state1 += 1
+        testObject.state1 += 2
+        testObject.state1 += 3
+        tracking1.assertHistoryEqual([.subscription("ObservableObjectPublisher"),
+                                      .signal,
+                                      .signal,
+                                      .signal])
+
+        XCTAssertFalse(testObject.customMirrorWasAccessed)
+    }
 
     // TODO: `objectWillChange` should return the same `ObservableObjectPublisher`
     // every time for Combine compatibility
@@ -418,6 +439,30 @@ private final class TestObject: ObservableObject {
         _state1 = Published(initialValue: initialValue)
         _state2 = Published(initialValue: initialValue)
         nonPublished = initialValue
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+private final class CustomReflectableTestObject: ObservableObject, CustomReflectable {
+    private(set) var customMirrorWasAccessed = false
+
+    var customMirror: Mirror {
+        customMirrorWasAccessed = true
+
+        // A hand-crafted mirror that matches what would have been generated otherwise.
+        return Mirror(self, children: [
+            "customMirrorWasAccessed": customMirrorWasAccessed,
+            "_state1": _state1,
+            "_state2": _state2,
+        ])
+    }
+
+    @Published var state1: Int
+    @Published var state2: Int
+
+    init(_ initialValue: Int = 0) {
+        _state1 = Published(initialValue: initialValue)
+        _state2 = Published(initialValue: initialValue)
     }
 }
 
