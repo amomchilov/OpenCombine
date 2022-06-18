@@ -95,6 +95,26 @@ final class ObservableObjectTests: XCTestCase {
                                       .value(())])
     }
 
+    func testCustomPublisherDoesntPublishFieldsAutomatically() {
+        // The automatic implementation of `objectWillChange` (driven by changes to `@Published` properties)
+        // is only applicable when `ObjectWillChangePublisher` is `ObservableObjectPublisher`.
+
+        let testObject = TestObjectWithCustomObservableObjectPublisher()
+        var downstreamSubscription1: Subscription?
+        let tracking1 = TrackingSubscriberBase<Void, Never>(
+            receiveSubscription: { downstreamSubscription1 = $0 }
+        )
+
+        testObject.objectWillChange.subscribe(tracking1)
+        tracking1.assertHistoryEqual([.subscription("Empty"), .completion(.finished)])
+        downstreamSubscription1?.request(.max(2))
+        tracking1.assertHistoryEqual([.subscription("Empty"), .completion(.finished)])
+        testObject.state1 += 1
+        testObject.state1 += 2
+        testObject.state1 += 3
+        tracking1.assertHistoryEqual([.subscription("Empty"), .completion(.finished)]) // No signals
+    }
+
     // TODO: `objectWillChange` should return the same `ObservableObjectPublisher`
     // every time for Combine compatibility
     //
@@ -418,6 +438,19 @@ private final class TestObject: ObservableObject {
         _state1 = Published(initialValue: initialValue)
         _state2 = Published(initialValue: initialValue)
         nonPublished = initialValue
+    }
+}
+
+@available(macOS 10.15, iOS 13.0, *)
+private final class TestObjectWithCustomObservableObjectPublisher: ObservableObject {
+    var objectWillChange = Empty<Void, Never>()
+
+    @Published var state1: Int
+    @Published var state2: Int
+
+    init(_ initialValue: Int = 0) {
+        _state1 = Published(initialValue: initialValue)
+        _state2 = Published(initialValue: initialValue)
     }
 }
 
